@@ -1,0 +1,10 @@
+# Pull app (https://github.com/apps/pull): merge upstream main into the fork's
+# main, which carries local patches that a hard reset would drop.
+version: "1"
+rules:
+  - base: main
+    upstream: ghostty-org:main
+    mergeMethod: merge
+    mergeUnstable: true
+    conflictReviewers:
+      - latekvo
