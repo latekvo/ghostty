@@ -37,7 +37,9 @@ class LastWindowPosition {
 
         let lastPosition = CGPoint(x: values[0], y: values[1])
 
-        guard let screen = window.screen ?? NSScreen.main else { return false }
+        // Clamp to the screen the saved origin is on; the unshown window's own screen can differ.
+        let savedScreen = restoreOrigin ? NSScreen.screens.first { $0.frame.contains(lastPosition) } : nil
+        guard let screen = savedScreen ?? window.screen ?? NSScreen.main else { return false }
         let visibleFrame = screen.visibleFrame
 
         var newFrame = window.frame

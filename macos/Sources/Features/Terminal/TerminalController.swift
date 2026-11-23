@@ -220,16 +220,35 @@ class TerminalController: BaseTerminalController, TabGroupCloseCoordinator.Contr
     // of each other.
     private static var lastCascadePoint = NSPoint(x: 0, y: 0)
 
-    private static func applyCascade(to window: NSWindow, hasFixedPos: Bool) {
+    private static func applyCascade(to window: NSWindow, from parent: NSWindow? = nil, hasFixedPos: Bool) {
         if hasFixedPos { return }
 
-        if all.count > 1 {
+        // Cascade from the window this one was opened from so both share a screen.
+        // preferredParent can resolve to the new window itself when it is the only one.
+        if let parent, parent != window {
+            lastCascadePoint = window.cascadeTopLeft(from: cascadePoint(after: parent))
+        } else if all.count > 1 {
             lastCascadePoint = window.cascadeTopLeft(from: lastCascadePoint)
         } else {
             // We assume the window frame is already correct at this point,
             // so we pass .zero to let cascade use the current frame position.
             lastCascadePoint = window.cascadeTopLeft(from: .zero)
         }
+    }
+
+    /// The point the next window cascading from `window` is placed at, without moving `window`.
+    private static func cascadePoint(after window: NSWindow) -> NSPoint {
+        // The cascadeTopLeft call below should NOT move the window. Starting with
+        // macOS 15, we found that specifically when used with the new window snapping
+        // features of macOS 15, this WOULD move the frame. So we keep track of the
+        // old frame and restore it if necessary. Issue:
+        // https://github.com/ghostty-org/ghostty/issues/2565
+        let oldFrame = window.frame
+        let point = window.cascadeTopLeft(from: .zero)
+        if window.frame != oldFrame {
+            window.setFrame(oldFrame, display: true)
+        }
+        return point
     }
 
     // The preferred parent terminal controller.
@@ -300,7 +319,7 @@ class TerminalController: BaseTerminalController, TabGroupCloseCoordinator.Contr
                     // take effect after positioning in `showWindow`. Our best theory is there is
                     // some next-event-loop-tick logic that Cocoa is doing that we need to be after.
                     DispatchQueue.main.async {
-                        Self.applyCascade(to: window, hasFixedPos: hasFixedPos)
+                        Self.applyCascade(to: window, from: parent, hasFixedPos: hasFixedPos)
                     }
                 }
             }
@@ -507,7 +526,7 @@ class TerminalController: BaseTerminalController, TabGroupCloseCoordinator.Contr
             if !window.styleMask.contains(.fullScreen) &&
                 window.tabGroup?.windows.count ?? 1 == 1 {
                 let hasFixedPos = controller.derivedConfig.windowPositionX != nil && controller.derivedConfig.windowPositionY != nil
-                Self.applyCascade(to: window, hasFixedPos: hasFixedPos)
+                Self.applyCascade(to: window, from: parent, hasFixedPos: hasFixedPos)
             }
 
             // We also activate our app so that it becomes front. This may be
@@ -1241,19 +1260,7 @@ class TerminalController: BaseTerminalController, TabGroupCloseCoordinator.Contr
             // are closing a tabbed window, we want to set the cascade point to be
             // the next cascade point from this window.
             if focusedWindow != window {
-                // The cascadeTopLeft call below should NOT move the window. Starting with
-                // macOS 15, we found that specifically when used with the new window snapping
-                // features of macOS 15, this WOULD move the frame. So we keep track of the
-                // old frame and restore it if necessary. Issue:
-                // https://github.com/ghostty-org/ghostty/issues/2565
-                let oldFrame = focusedWindow.frame
-
-                Self.lastCascadePoint = focusedWindow.cascadeTopLeft(from: .zero)
-
-                if focusedWindow.frame != oldFrame {
-                    focusedWindow.setFrame(oldFrame, display: true)
-                }
-
+                Self.lastCascadePoint = Self.cascadePoint(after: focusedWindow)
                 return
             }
 
